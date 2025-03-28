@@ -1,0 +1,378 @@
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
+import time
+import re
+import random
+import json
+
+class TaobaoScraper:
+    def __init__(self):
+        # 设置Chrome选项
+        chrome_options = webdriver.ChromeOptions()
+        
+        # 添加更多反爬虫检测的规避措施
+        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+        chrome_options.add_experimental_option('excludeSwitches', ['enable-automation'])
+        chrome_options.add_experimental_option('useAutomationExtension', False)
+        
+        # 添加用户代理
+        user_agents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+        ]
+        chrome_options.add_argument(f'--user-agent={random.choice(user_agents)}')
+        
+        # 禁用图片加载，提高速度
+        chrome_options.add_argument('--blink-settings=imagesEnabled=false')
+        
+        # 初始化浏览器
+        self.driver = webdriver.Chrome(options=chrome_options)
+        
+        # 伪装WebDriver
+        self.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+            'source': '''
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+                window.navigator.chrome = {
+                    runtime: {}
+                };
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['zh-CN', 'zh', 'en']
+                });
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5]
+                });
+            '''
+        })
+        
+        # 设置窗口大小以模拟正常浏览器行为
+        self.driver.set_window_size(1920, 1080)
+        
+        self.wait = WebDriverWait(self.driver, 20)
+    
+    def login(self):
+        # 打开淘宝登录页
+        self.driver.get("https://login.taobao.com/")
+        print("请在30秒内完成手动登录")
+        time.sleep(30)
+    
+    def get_sales_data(self, keyword):
+        try:
+            # 搜索商品
+            search_url = f"https://s.taobao.com/search?q={keyword}"
+            print(f"正在访问搜索页面: {search_url}")
+            self.driver.get(search_url)
+            
+            # 增加等待时间，确保页面完全加载
+            time.sleep(8)
+            
+            # 滚动页面以加载所有内容
+            self._scroll_page()
+            
+            # 保存页面源码以供调试
+            with open('page_source.html', 'w', encoding='utf-8') as f:
+                f.write(self.driver.page_source)
+            print("已保存页面源码到 page_source.html")
+
+            # 尝试从页面脚本中提取数据
+            try:
+                products = self._extract_from_json()
+                if products:
+                    print(f"从JSON数据中提取到 {len(products)} 个商品")
+                    return products
+            except Exception as e:
+                print(f"从JSON提取数据失败: {str(e)}")
+            
+            # 如果JSON提取失败，尝试从DOM提取
+            return self._extract_from_dom()
+            
+        except Exception as e:
+            print(f"获取销量数据时出错: {str(e)}")
+            return []
+    
+    def _scroll_page(self):
+        """滚动页面以加载所有内容"""
+        print("滚动页面加载更多内容...")
+        
+        try:
+            # 获取页面高度
+            last_height = self.driver.execute_script("return document.body.scrollHeight")
+            
+            # 滚动三次，每次停顿随机时间
+            for i in range(3):
+                # 滚动到页面的一部分，而不是完全滚动到底部
+                scroll_position = (i+1) * last_height / 4  # 分成四部分滚动
+                self.driver.execute_script(f"window.scrollTo(0, {scroll_position});")
+                
+                # 等待随机时间让页面加载
+                time.sleep(random.uniform(2, 4))
+                
+                # 获取窗口大小，确保鼠标移动在窗口内
+                window_size = self.driver.get_window_size()
+                width = window_size['width']
+                height = window_size['height']
+                
+                # 安全的随机鼠标移动，确保在窗口范围内
+                try:
+                    action = ActionChains(self.driver)
+                    # 限制移动范围，避免超出窗口边界
+                    x_offset = random.randint(10, max(11, width-100))
+                    y_offset = random.randint(10, max(11, height-100))
+                    action.move_by_offset(x_offset, y_offset).perform()
+                    # 重置鼠标位置到原点，防止累积偏移
+                    action.move_to_element(self.driver.find_element(By.TAG_NAME, 'body')).perform()
+                except Exception as e:
+                    print(f"鼠标移动时出错 (忽略并继续): {str(e)}")
+        except Exception as e:
+            print(f"页面滚动时出错 (继续执行): {str(e)}")
+            # 继续执行，不要因为滚动失败而中断整个过程
+    
+    def _extract_from_json(self):
+        """尝试从页面内嵌的JSON数据中提取商品信息"""
+        print("尝试从页面内嵌JSON数据提取商品信息...")
+        
+        try:
+            # 查找所有脚本标签
+            scripts = self.driver.find_elements(By.TAG_NAME, 'script')
+            
+            # 查找包含商品数据的脚本
+            for script in scripts:
+                try:
+                    content = script.get_attribute('innerHTML') or ''
+                    
+                    # 尝试多种可能的数据模式
+                    data_patterns = [
+                        r'g_page_config\s*=\s*(\{.*?\});\s*',
+                        r'window\.g_srp_loadCss\s*=\s*(\{.*?\});\s*',
+                        r'window\.__INIT_DATA__\s*=\s*(\{.*?\});\s*'
+                    ]
+                    
+                    # 尝试每种模式
+                    for pattern in data_patterns:
+                        json_match = re.search(pattern, content, re.DOTALL)
+                        if json_match:
+                            try:
+                                json_data = json.loads(json_match.group(1))
+                                
+                                # 尝试多种数据路径
+                                item_paths = [
+                                    lambda d: d.get('mods', {}).get('itemlist', {}).get('data', {}).get('auctions', []),
+                                    lambda d: d.get('props', {}).get('pageProps', {}).get('listItems', []),
+                                    lambda d: d.get('data', {}).get('items', [])
+                                ]
+                                
+                                for path_func in item_paths:
+                                    try:
+                                        items = path_func(json_data)
+                                        if items and isinstance(items, list) and len(items) > 0:
+                                            # 写入完整JSON以便调试
+                                            with open('json_data_found.json', 'w', encoding='utf-8') as f:
+                                                json.dump(json_data, f, ensure_ascii=False, indent=2)
+                                            
+                                            products = []
+                                            for item in items:
+                                                # 尝试多种可能的字段名
+                                                title = self._get_first_valid_value(item, ['title', 'raw_title', 'name', 'itemName', 'item_name'], '无标题')
+                                                # 移除HTML标签
+                                                title = re.sub(r'<[^>]+>', '', title)
+                                                
+                                                # 尝试多种可能的销量字段
+                                                sales_text = self._get_first_valid_value(item, ['view_sales', 'sales', 'saleCount', 'sellCount', 'realSales', 'deal_cnt'], '0人付款')
+                                                sales_match = re.search(r'(\d+)', str(sales_text))
+                                                sales_number = int(sales_match.group(1)) if sales_match else 0
+                                                
+                                                # 月均销量
+                                                monthly_sales = sales_number / 30
+                                                
+                                                # 提取价格
+                                                price = self._get_first_valid_value(item, ['view_price', 'price', 'currentPrice', 'priceInt'], '0')
+                                                
+                                                products.append({
+                                                    'title': title,
+                                                    'total_sales': sales_number,
+                                                    'monthly_sales': monthly_sales,
+                                                    'price': price,
+                                                    'shop_name': self._get_first_valid_value(item, ['nick', 'shopName', 'shop_name'], ''),
+                                                    'location': self._get_first_valid_value(item, ['item_loc', 'location', 'itemLocation'], '')
+                                                })
+                                            
+                                            if products:
+                                                return products
+                                    except Exception as e:
+                                        pass  # 尝试下一个路径
+                            except json.JSONDecodeError:
+                                pass  # 尝试下一个模式
+                except Exception:
+                    continue  # 尝试下一个脚本标签
+            
+            # 尝试直接查找页面中的数据
+            try:
+                page_source = self.driver.page_source
+                # 搜索页面中可能包含的数据模式
+                all_json_matches = re.findall(r'<script[^>]*>([^<]*?g_page_config\s*=\s*\{.*?\};)[^<]*?</script>', 
+                                            page_source, re.DOTALL)
+                
+                for match in all_json_matches:
+                    try:
+                        json_str = re.search(r'g_page_config\s*=\s*(\{.*?\});', match, re.DOTALL)
+                        if json_str:
+                            # 保存找到的JSON字符串供调试
+                            with open('json_match.txt', 'w', encoding='utf-8') as f:
+                                f.write(json_str.group(1))
+                                
+                            # 尝试解析
+                            try:
+                                json_data = json.loads(json_str.group(1))
+                                # 继续提取项目...
+                                # (这里可以复用上面的代码)
+                            except json.JSONDecodeError:
+                                pass
+                    except Exception:
+                        continue
+            except Exception as e:
+                print(f"尝试直接提取JSON时出错: {str(e)}")
+        
+        except Exception as e:
+            print(f"从JSON提取过程中出错: {str(e)}")
+        
+        print("未能从JSON提取到商品数据")
+        return []
+    
+    def _get_first_valid_value(self, dictionary, keys, default=''):
+        """从字典中尝试多个键，返回第一个找到的值"""
+        if not dictionary or not isinstance(dictionary, dict):
+            return default
+        
+        for key in keys:
+            if key in dictionary and dictionary[key]:
+                return dictionary[key]
+        
+        return default
+    
+    def _extract_from_dom(self):
+        """从DOM元素中提取商品信息"""
+        print("尝试从DOM中提取商品信息...")
+        
+        # 尝试多种可能的选择器来查找商品列表
+        selectors = [
+            ".doubleCardWrapperAdapt--mEcC7olq",  # 从页面源码中观察到的新选择器
+            ".item.J_MouserOnverReq",
+            ".item",
+            "[data-index]"  # 更通用的选择器
+        ]
+        
+        items = []
+        for selector in selectors:
+            try:
+                items = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                if items:
+                    print(f"使用选择器 '{selector}' 找到 {len(items)} 个商品")
+                    break
+            except Exception:
+                continue
+        
+        if not items:
+            print("无法找到商品列表，请检查页面结构")
+            return []
+        
+        products = []
+        for item in items:
+            try:
+                # 提取标题
+                try:
+                    title_element = item.find_element(By.CSS_SELECTOR, ".title a, .doubleTitle--VZLUYN_W, [class*='Title']")
+                    title = title_element.text.strip()
+                except:
+                    try:
+                        title = item.get_attribute('data-title')
+                    except:
+                        title = "无法获取标题"
+                
+                # 提取销量
+                try:
+                    # 尝试多种可能的销量选择器
+                    sales_element = item.find_element(By.CSS_SELECTOR, ".deal-cnt, .realSales--XZJiepmt, [class*='Sales']")
+                    sales_text = sales_element.text.strip()
+                except:
+                    try:
+                        # 尝试从属性中获取
+                        sales_text = item.get_attribute('data-sales')
+                    except:
+                        sales_text = "0人付款"
+                
+                # 提取数字
+                sales_match = re.search(r'(\d+)', sales_text)
+                sales_number = int(sales_match.group(1)) if sales_match else 0
+                
+                # 计算月均销量
+                monthly_sales = sales_number / 30
+                
+                # 提取价格
+                try:
+                    price_element = item.find_element(By.CSS_SELECTOR, ".price, .priceInt--yqqZMJ5a, [class*='Price']")
+                    price = price_element.text.strip()
+                except:
+                    price = "无法获取价格"
+                
+                products.append({
+                    'title': title,
+                    'total_sales': sales_number,
+                    'monthly_sales': monthly_sales,
+                    'price': price
+                })
+                
+            except Exception as e:
+                print(f"提取单个商品数据时出错: {str(e)}")
+                continue
+        
+        return products
+    
+    def close(self):
+        self.driver.quit()
+
+def main():
+    scraper = TaobaoScraper()
+    try:
+        # 登录淘宝
+        scraper.login()
+        
+        # 输入要搜索的商品关键词
+        keyword = input("请输入要搜索的商品关键词：")
+        
+        # 获取销量数据
+        products = scraper.get_sales_data(keyword)
+        
+        if not products:
+            print("未能获取到任何商品信息")
+            return
+            
+        # 打印结果
+        for i, product in enumerate(products, 1):
+            print(f"\n商品 {i}:")
+            print(f"标题: {product['title']}")
+            print(f"总销量: {product['total_sales']}人付款")
+            print(f"月均销量: {product['monthly_sales']:.2f}")
+            if 'price' in product:
+                print(f"价格: {product['price']}")
+            if 'shop_name' in product:
+                print(f"店铺: {product['shop_name']}")
+            if 'location' in product:
+                print(f"地点: {product['location']}")
+        
+        # 保存结果到文件
+        with open('taobao_results.json', 'w', encoding='utf-8') as f:
+            json.dump(products, f, ensure_ascii=False, indent=2)
+        print(f"\n已将结果保存到 taobao_results.json 文件")
+            
+    except Exception as e:
+        print(f"程序运行出错: {str(e)}")
+    finally:
+        scraper.close()
+
+if __name__ == "__main__":
+    main() 

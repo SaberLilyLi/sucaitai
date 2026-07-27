@@ -1,161 +1,132 @@
-# 淘宝商品销量爬虫使用说明
+# 素材台
 
-> **注意：本项目完全由curser完成，包括代码和md文档，全程无人为干预。**
+面向电商选品与素材归档的本地工具。通过万邦 Onebound API 搜索淘宝、1688 商品，按条件筛选，拉取商品素材并保存到本地素材库；支持导出到腾讯文档和 Windows 绿色版交付。
 
-截止2025/3/26，运行正常，使用Chrome版本为 134.0.6998.178。
+> 本项目不使用 Chrome 登录或 Selenium 抓取。请确保具备 Onebound API 的合法使用权，并遵守相关平台和数据服务的使用条款。
 
-## 项目简介
+## 核心能力
 
-本项目是一个基于Python和Selenium的淘宝商品销量数据爬虫工具，可以帮助用户自动获取淘宝搜索结果中商品的销量数据，并进行分析。
+- 淘宝与 1688 商品关键词搜索
+- 价格、发货地、发货时效筛选
+- 自然语言选品需求解析（配置 DeepSeek 后可用；未配置时使用本地规则）
+- 拉取并按商品归档主图、SKU 图、详情图和视频
+- 本地 JSON 素材库，无需额外数据库
+- 导出选中商品至腾讯文档在线表格
+- 打包为 Windows 双击即用的绿色文件夹
 
-主要功能包括：
-- 爬取淘宝搜索结果中商品的基本信息（标题、价格、销量等）
-- 支持多页数据爬取（默认爬取前三页）
-- 计算商品的月均销量（总销量÷12）
-- 将爬取结果保存为JSON文件
-- 支持数据可视化和分析
+## 项目结构
 
-## 文件结构
-
-项目包含以下几个主要文件：
-
-1. **taobao_scraper.py**: 核心爬虫代码，负责从淘宝网站获取商品销量数据
-2. **view_sales_data.py**: 数据查看和分析工具，用于处理和展示爬取的销量数据
-3. **visualize_sales.py**: 数据可视化工具，创建销量数据的图表和统计分析
-4. **taobao_results.json**: 爬取结果的保存文件
-
-## 环境需求
-
-运行本项目需要以下环境：
-
-```
-Python 3.7+
-selenium
-pandas
-tabulate
-matplotlib
-openpyxl
-ChromeDriver (与本地Chrome浏览器版本匹配)
+```text
+.
+├── .cursor/skills/taobao-sales-scraper/  # 主应用源码
+│   ├── frontend/                         # React + Vite + TypeScript 前端
+│   ├── server/                           # FastAPI 服务与数据处理
+│   ├── desktop/                          # Windows 打包脚本
+│   ├── scripts/                          # 离线分析辅助脚本
+│   └── data/                             # 本地运行时数据（不提交）
+├── docs/                                 # 设计与打包文档
+└── taobao_scraper.py                     # 兼容旧入口，转发至应用脚本
 ```
 
-安装依赖：
-```bash
-pip install selenium pandas tabulate matplotlib openpyxl
+## 开发环境
+
+- Python 3.10+
+- Node.js 18+（前端开发或构建时需要）
+- Onebound API Key 与 Secret
+
+## 快速启动
+
+### 1. 配置环境变量
+
+```powershell
+cd .cursor/skills/taobao-sales-scraper/server
+Copy-Item .env.example .env
 ```
 
-## 使用说明
+编辑 `.env`，填写以下配置：
 
-### 1. 爬取淘宝商品销量数据
-
-运行`taobao_scraper.py`文件开始爬取：
-
-```bash
-python taobao_scraper.py
+```env
+ONEBOUND_API_KEY=你的_API_Key
+ONEBOUND_API_SECRET=你的_API_Secret
 ```
 
-使用步骤：
-1. 运行后会自动打开Chrome浏览器
-2. 请在30秒内手动完成淘宝的登录操作（必须登录才能查看销量）
-3. 登录成功后，在命令行输入想要搜索的商品关键词
-4. 程序会自动爬取该关键词搜索结果的前三页商品数据
-5. 爬取完成后，数据会保存到`taobao_results.json`文件中
+`DEEPSEEK_API_KEY` 为可选项，用于更准确地解析自然语言搜索需求。
 
-**注意事项**：
-- 由于淘宝的反爬虫机制，可能需要手动完成验证码验证
-- 请勿频繁运行，避免IP被封
-- 首次运行时可能需要调整浏览器设置
+### 2. 启动后端
 
-### 2. 查看和分析销量数据
-
-运行`view_sales_data.py`文件查看数据分析结果：
-
-```bash
-python view_sales_data.py
+```powershell
+cd .cursor/skills/taobao-sales-scraper/server
+pip install -r requirements.txt
+python app.py
 ```
 
-功能：
-- 加载并解析`taobao_results.json`文件
-- 将商品按销量排序并显示前20个高销量商品
-- 计算销量统计信息（总商品数、平均销量等）
-- 将排序后的数据导出到Excel文件`taobao_sales_analysis.xlsx`
+服务默认地址为 `http://127.0.0.1:8787`，健康检查接口为 `GET /api/health`。
 
-### 3. 销量数据可视化
+### 3. 启动前端（开发模式）
 
-运行`visualize_sales.py`文件生成数据可视化图表：
+另开一个终端：
 
-```bash
-python visualize_sales.py
+```powershell
+cd .cursor/skills/taobao-sales-scraper/frontend
+npm install
+npm run dev
 ```
 
-可生成以下图表：
-- 商品销量排序分布
-- 价格与销量关系散点图
-- 销量范围分布直方图
-- 月均销量前10商品排名
+开发服务器通常运行在 `http://127.0.0.1:5174`，并已代理 `/api` 请求至后端。
 
-图表会保存为`taobao_sales_analysis.png`文件。
+### 4. 一体化运行
 
-## 代码说明
+先构建前端，再由 FastAPI 同时托管页面与 API：
 
-### taobao_scraper.py
+```powershell
+cd .cursor/skills/taobao-sales-scraper/frontend
+npm install
+npm run build
 
-核心爬虫类`TaobaoScraper`包含以下主要方法：
+cd ../server
+python desktop_main.py
+```
 
-- `login()`: 打开淘宝登录页面，等待用户手动登录
-- `get_sales_data(keyword)`: 爬取指定关键词的商品数据
-- `extract_full_data(keyword, max_pages)`: 爬取多页数据（默认3页）
-- `_extract_from_json()`, `_extract_from_dom()`, `_extract_from_xpath()`: 多种数据提取方法，增加成功率
-- `_extract_alternative()`: 备用提取方法，使用JavaScript直接从页面提取数据
+## 工作流程
 
-### view_sales_data.py
+1. 输入关键词或一句自然语言选品需求。
+2. 选择淘宝或 1688，并设置价格、发货地、发货时效等条件。
+3. 从搜索结果中挑选商品并查看详情。
+4. 拉取主图、SKU 图、详情图、视频等素材；文件保存于 `data/product_media/`。
+5. 将有价值的商品加入本地素材库，或导出选中项到腾讯文档。
 
-数据分析脚本，主要功能：
+## Windows 绿色版打包
 
-- 加载JSON数据
-- 提取价格中的数字
-- 修正月销量计算（总销量÷12）
-- 按销量排序并显示统计数据
-- 导出Excel表格供进一步分析
+在已配置 `server/.env` 的开发机执行：
 
-### visualize_sales.py
+```powershell
+cd .cursor/skills/taobao-sales-scraper/desktop
+.\build.ps1
+```
 
-数据可视化脚本，使用matplotlib创建多种图表，帮助用户直观了解销量分布情况。
+产物位于 `desktop/dist/素材台/`。将整个文件夹压缩后交付，使用者双击 `素材台.exe` 即可启动。
 
-## 注意事项
+请勿打包或提交以下本地文件：
 
-1. **合法使用**：本工具仅供学习和研究使用，请勿用于商业目的或违反淘宝用户协议
-2. **反爬虫机制**：淘宝有严格的反爬虫措施，爬取频率过高可能导致账号或IP被封
-3. **销量计算**：月均销量是通过总销量除以12计算得出，这是一个估算值
-4. **数据准确性**：淘宝显示的"人付款"数据可能并非实时数据，具有一定延迟
-5. **爬虫维护**：由于淘宝页面结构可能变化，若爬虫失效需更新相关选择器
+- `server/.env` 中的真实 API 密钥
+- `.chrome-profile/` 等个人浏览器数据
+- `data/` 中的客户素材和本地库
 
-## 常见问题
+## API 摘要
 
-1. **无法获取商品数据**
-   - 检查是否成功登录淘宝
-   - 查看是否需要完成验证码验证
-   - 检查网络连接是否稳定
-   - 淘宝可能更新了页面结构，需要更新选择器
+| 接口 | 用途 |
+| --- | --- |
+| `GET /api/health` | 健康检查 |
+| `POST /api/search` | 搜索淘宝或 1688 商品 |
+| `POST /api/parse-intent` | 解析自然语言搜索条件 |
+| `POST /api/products/fetch-detail` | 拉取并保存商品素材 |
+| `GET` / `POST /api/library` | 查询或保存本地素材库 |
+| `POST /api/tencent-docs/export` | 导出商品至腾讯文档 |
 
-2. **数据不完整**
-   - 部分商品可能没有显示销量信息
-   - 标题可能无法正确提取，在这种情况下标题字段会显示为null
+完整接口说明和实现位置见 [.cursor/skills/taobao-sales-scraper/README.md](.cursor/skills/taobao-sales-scraper/README.md)。
 
-3. **如何爬取更多页面**
-   - 修改`extract_full_data`方法中的`max_pages`参数（不建议设置过大）
+## 数据与合规
 
-4. **如何获取更精确的数据**
-   - 考虑爬取每个商品的详情页
-   - 使用淘宝开放平台API（需要申请开发者权限）
+搜索结果仅保存在当前服务会话中；加入素材库后会写入本地 `data/library.json`。商品素材会下载到 `data/product_media/`。
 
-## 贡献与改进
-
-欢迎对本项目提出改进建议或贡献代码，可以考虑以下方向：
-- 添加代理IP池，提高爬取成功率
-- 优化数据提取算法，适应淘宝页面的变化
-- 增加更多数据分析功能和可视化选项
-- 添加GUI界面，提高易用性
-
-## 免责声明
-
-本项目仅供学习和研究使用，用户需遵守淘宝平台的使用条款和相关法律法规。使用本工具可能违反淘宝的用户协议，由此产生的任何风险和责任由用户自行承担。开发者不对使用本工具导致的任何问题负责。
+请合理控制 API 调用频率，确保数据使用、导出和分发符合 Onebound 及相关平台的服务条款与法律法规。

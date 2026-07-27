@@ -1,0 +1,20 @@
+# Skill runtime (do not distribute)
+.cursor/skills/taobao-sales-scraper/.chrome-profile/
+.cursor/skills/taobao-sales-scraper/data/
+.cursor/skills/taobao-sales-scraper/server/.env
+.cursor/skills/taobao-sales-scraper/desktop/dist/
+.cursor/skills/taobao-sales-scraper/desktop/build/
+.cursor/skills/taobao-sales-scraper/frontend/dist/
+.cursor/skills/taobao-sales-scraper/frontend/dist.__bak/
+
+# Generated logs
+*.log
+
+# Legacy / local
+.chrome-profile/
+__pycache__/
+*.pyc
+_keyword.txt
+.env
+.env.*
+!.env.example

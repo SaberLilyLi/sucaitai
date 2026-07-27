@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>素材台 · 商品管理</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Serif+SC:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div>
+          <p class="brand-name">素材台</p>
+          <p class="brand-sub">对接爬虫结果 · 本地 JSON 库</p>
+        </div>
+      </div>
+      <div class="topbar-meta" id="topMeta">
+        <span>已导入 <strong id="statTotal">0</strong></span>
+        <span>已勾选 <strong id="statSelected">0</strong></span>
+        <span>本地库 <strong id="statLibrary">0</strong></span>
+      </div>
+    </header>
+
+    <!-- ========== 列表页 ========== -->
+    <main id="viewList" class="view view-list">
+      <section class="toolbar">
+        <div class="toolbar-left">
+          <h1 class="page-title">商品列表</h1>
+          <p class="page-desc">从爬虫结果展示标题与链接，勾选后可批量下载素材</p>
+        </div>
+        <div class="toolbar-actions">
+          <label class="field search-field">
+            <span class="sr-only">搜索</span>
+            <input id="searchInput" type="search" placeholder="搜索标题或链接…" />
+          </label>
+          <button type="button" class="btn btn-ghost" id="btnImportHint" title="后续对接导入">刷新列表</button>
+          <button type="button" class="btn btn-primary" id="btnBatchDownload" disabled>
+            批量下载选中
+          </button>
+        </div>
+      </section>
+
+      <section class="table-panel">
+        <div class="table-scroll">
+          <table class="data-table" id="productTable">
+            <thead>
+              <tr>
+                <th class="col-check">
+                  <input type="checkbox" id="checkAll" aria-label="全选" />
+                </th>
+                <th class="col-thumb">主图</th>
+                <th class="col-title">标题</th>
+                <th class="col-link">链接</th>
+                <th class="col-price">价格</th>
+                <th class="col-actions">操作</th>
+              </tr>
+            </thead>
+            <tbody id="productTbody"></tbody>
+          </table>
+        </div>
+        <p class="empty-hint" id="listEmpty" hidden>暂无商品。请先运行爬虫生成结果。</p>
+      </section>
+    </main>
+
+    <!-- ========== 详情页 ========== -->
+    <main id="viewDetail" class="view view-detail" hidden>
+      <section class="detail-nav">
+        <button type="button" class="btn btn-ghost" id="btnBack">← 返回列表</button>
+        <div class="detail-nav-actions">
+          <button type="button" class="btn btn-ghost" id="btnDownloadAll">下载本商品全部图片</button>
+          <button type="button" class="btn btn-primary" id="btnSave">保存到本地库</button>
+        </div>
+      </section>
+
+      <section class="detail-hero">
+        <div class="detail-cover" id="detailCover"></div>
+        <div class="detail-summary">
+          <p class="eyebrow">商品详情</p>
+          <h1 class="detail-title" id="detailTitle">—</h1>
+          <dl class="detail-facts">
+            <div>
+              <dt>价格</dt>
+              <dd id="detailPrice">—</dd>
+            </div>
+            <div>
+              <dt>发货地</dt>
+              <dd id="detailLocation">—</dd>
+            </div>
+            <div class="fact-link">
+              <dt>产品链接</dt>
+              <dd><a id="detailLink" href="#" target="_blank" rel="noopener">打开淘宝页</a></dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="gallery-block">
+        <div class="gallery-head">
+          <h2>1比1主图</h2>
+          <span class="count-pill" id="mainCount">0</span>
+        </div>
+        <div class="gallery-grid" id="galleryMain"></div>
+      </section>
+
+      <section class="gallery-block">
+        <div class="gallery-head">
+          <h2>SKU图</h2>
+          <span class="count-pill" id="skuCount">0</span>
+        </div>
+        <div class="gallery-grid" id="gallerySku"></div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast" hidden role="status"></div>
+  </div>
+
+  <script src="mock-data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

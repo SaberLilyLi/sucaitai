@@ -1,4 +1,4 @@
-import { Layout as ArcoLayout, Radio, Space, Typography } from "@arco-design/web-react";
+import { Layout as ArcoLayout, Radio, Typography } from "@arco-design/web-react";
 import { Link } from "react-router-dom";
 import type { ReactNode } from "react";
 import type { SearchPlatform } from "../api/client";
@@ -7,6 +7,7 @@ type LayoutProps = {
   children: ReactNode;
   total: number;
   selected: number;
+  fetchedCount: number;
   libraryCount: number;
   platform: SearchPlatform;
   onPlatformChange: (next: SearchPlatform) => void;
@@ -16,6 +17,7 @@ export function Layout({
   children,
   total,
   selected,
+  fetchedCount,
   libraryCount,
   platform,
   onPlatformChange,
@@ -48,17 +50,24 @@ export function Layout({
             <Radio value="1688">1688</Radio>
           </Radio.Group>
         </div>
-        <Space size="large" className="topbar-meta">
-          <Typography.Text>
-            已导入 <Typography.Text bold>{total}</Typography.Text>
-          </Typography.Text>
-          <Typography.Text>
-            已勾选 <Typography.Text bold>{selected}</Typography.Text>
-          </Typography.Text>
-          <Typography.Text>
-            本地库 <Typography.Text bold>{libraryCount}</Typography.Text>
-          </Typography.Text>
-        </Space>
+        <div className="topbar-stats">
+          <div className="stat">
+            <span className="stat-num">{total}</span>
+            <span className="stat-label">当前结果</span>
+          </div>
+          <div className="stat">
+            <span className="stat-num">{selected}</span>
+            <span className="stat-label">已勾选</span>
+          </div>
+          <div className="stat">
+            <span className="stat-num">{fetchedCount}</span>
+            <span className="stat-label">已拉取素材</span>
+          </div>
+          <Link to="/library" className="stat stat-link" title="打开本地素材库">
+            <span className="stat-num">{libraryCount}</span>
+            <span className="stat-label">本地库 · 已归档</span>
+          </Link>
+        </div>
       </ArcoLayout.Header>
       <ArcoLayout.Content className="arco-content">{children}</ArcoLayout.Content>
     </ArcoLayout>

@@ -5,7 +5,8 @@ import { Layout } from "./components/Layout";
 import { ToastProvider } from "./context/ToastContext";
 import { ProductDetailPage } from "./pages/ProductDetailPage";
 import { ProductListPage } from "./pages/ProductListPage";
-import type { Product } from "./types/product";
+import { LibraryPage } from "./pages/LibraryPage";
+import { hasFetchedMedia, type Product } from "./types/product";
 
 export default function App() {
   // 搜索结果仅前端会话态：刷新即空，需重新搜索
@@ -40,6 +41,10 @@ export default function App() {
   }, []);
 
   const selectedCount = useMemo(() => selected.size, [selected]);
+  const fetchedCount = useMemo(
+    () => products.filter(hasFetchedMedia).length,
+    [products],
+  );
 
   const onPlatformChange = (next: SearchPlatform) => {
     if (next === platform) return;
@@ -53,6 +58,7 @@ export default function App() {
       <Layout
         total={products.length}
         selected={selectedCount}
+        fetchedCount={fetchedCount}
         libraryCount={libraryIds.size}
         platform={platform}
         onPlatformChange={onPlatformChange}
@@ -84,6 +90,17 @@ export default function App() {
                   libraryIds={libraryIds}
                   setLibraryIds={setLibraryIds}
                   platform={platform}
+                />
+              }
+            />
+            <Route
+              path="/library"
+              element={
+                <LibraryPage
+                  setProducts={setProducts}
+                  onLibraryItemsChange={(items) =>
+                    setLibraryIds(new Set(items.map((item) => item.id).filter(Boolean)))
+                  }
                 />
               }
             />

@@ -2,6 +2,7 @@
 """素材台 API：淘宝实时搜索 + JSON 本地库。"""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -59,6 +60,10 @@ class SaveBody(BaseModel):
 
 class TencentDocsExportBody(BaseModel):
     ids: list[str] = Field(..., min_length=1, description="需要导出的商品 ID")
+
+
+class MediaExportBody(BaseModel):
+    ids: list[str] = Field(..., min_length=1, description="需要打包素材的商品 ID")
 
 
 class DetailFetchBody(BaseModel):
@@ -126,6 +131,64 @@ def export_to_tencent_docs(body: TencentDocsExportBody):
         return {"ok": True, "message": f"已同步 {result['rows']} 个商品。", "file": result}
     except (RuntimeError, ValueError) as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
+
+
+@app.post("/api/products/export-media")
+def export_product_media(body: MediaExportBody):
+    """把已下载的本地素材按商品打成一个 ZIP，供运营/设计批量交付。"""
+    from datetime import datetime
+    import json
+    import re
+    import zipfile
+
+    products = {str(p.get("id")): p for p in load_products()}
+    products.update({str(p.get("id")): p for p in load_library() if p.get("id")})
+    selected = [products[item_id] for item_id in body.ids if item_id in products]
+    if not selected:
+        raise HTTPException(status_code=404, detail="选中的商品已失效，请重新搜索后再试。")
+
+    exports_dir = DATA_DIR / "exports"
+    exports_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    archive = exports_dir / f"素材台-批量素材-{stamp}.zip"
+    manifest: list[dict[str, Any]] = []
+    file_count = 0
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for product in selected:
+            product_id = str(product.get("id") or "")
+            source_dir = media_dir / product_id
+            if not source_dir.is_dir():
+                continue
+            title = re.sub(r'[\\/:*?"<>|]', "_", str(product.get("title") or "商品"))[:40]
+            folder = f"{product_id}_{title}" if title else product_id
+            count = 0
+            for file in source_dir.rglob("*"):
+                if file.is_file():
+                    zf.write(file, arcname=str(Path(folder) / file.relative_to(source_dir)))
+                    count += 1
+                    file_count += 1
+            if count:
+                manifest.append(
+                    {
+                        "id": product_id,
+                        "title": product.get("title") or "",
+                        "url": product.get("url") or "",
+                        "project": product.get("project") or "",
+                        "tags": product.get("tags") or [],
+                        "files": count,
+                    }
+                )
+        if manifest:
+            zf.writestr("素材清单.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+    if not file_count:
+        archive.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail="所选商品没有已拉取的本地素材，请先拉取详情素材。")
+    return FileResponse(
+        archive,
+        media_type="application/zip",
+        filename=archive.name,
+        headers={"X-Exported-Products": str(len(manifest))},
+    )
 
 
 @app.post("/api/parse-intent")
@@ -207,7 +270,14 @@ def post_library(body: SaveBody):
     if not body.product:
         raise HTTPException(status_code=400, detail="缺少 product")
     items = save_to_library(body.product)
-    return {"count": len(items), "items": items, "libraryIds": [x.get("id") for x in items if x.get("id")]}
+    product_id = body.product.get("id")
+    saved_product = next((x for x in items if x.get("id") == product_id), body.product)
+    return {
+        "count": len(items),
+        "items": items,
+        "product": saved_product,
+        "libraryIds": [x.get("id") for x in items if x.get("id")],
+    }
 
 
 def _mount_frontend() -> None:

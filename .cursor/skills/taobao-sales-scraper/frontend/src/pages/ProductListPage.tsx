@@ -5,16 +5,23 @@ import {
   Input,
   InputNumber,
   Message,
+  Modal,
   Select,
-  Space,
   Tag,
   Typography,
 } from "@arco-design/web-react";
+import {
+  IconDown,
+  IconRobot,
+  IconSearch,
+  IconUp,
+} from "@arco-design/web-react/icon";
 import {
   parseSearchIntent,
   searchTaobao,
   fetchProductDetailMedia,
   exportToTencentDocs,
+  exportProductMedia,
   saveToLibrary,
   type IntentTag,
   type SearchFilters,
@@ -90,10 +97,18 @@ export function ProductListPage({
   const [filter, setFilter] = useState("");
   const [aiText, setAiText] = useState("");
   const [aiTags, setAiTags] = useState<IntentTag[]>([]);
+  const [aiOpen, setAiOpen] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [searching, setSearching] = useState(false);
   const [fetchingIds, setFetchingIds] = useState<Set<string>>(() => new Set());
   const [exporting, setExporting] = useState(false);
+  const [exportingMedia, setExportingMedia] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [projectDraft, setProjectDraft] = useState("");
+  const [tagsDraft, setTagsDraft] = useState("");
+  const [noteDraft, setNoteDraft] = useState("");
+  const [savingLibrary, setSavingLibrary] = useState(false);
+  const [compareVisible, setCompareVisible] = useState(false);
   const navigate = useNavigate();
 
   const filtered = useMemo(() => {
@@ -110,15 +125,34 @@ export function ProductListPage({
 
   const selectedKeys = useMemo(() => [...selected], [selected]);
 
-  const onSave = async (id: string) => {
+  const openSaveDialog = (id: string) => {
     const p = products.find((x) => x.id === id);
     if (!p) return;
+    setEditingProduct(p);
+    setProjectDraft(p.project || "");
+    setTagsDraft((p.tags || []).join(", "));
+    setNoteDraft(p.note || "");
+  };
+
+  const onSave = async () => {
+    if (!editingProduct) return;
+    const tags = [...new Set(tagsDraft.split(/[,，、]/).map((x) => x.trim()).filter(Boolean))];
+    setSavingLibrary(true);
     try {
-      const res = await saveToLibrary(p);
+      const res = await saveToLibrary({
+        ...editingProduct,
+        project: projectDraft.trim() || undefined,
+        tags,
+        note: noteDraft.trim() || undefined,
+      });
       setLibraryIds(new Set(res.libraryIds || []));
-      Message.success(`已保存到 library.json`);
+      setProducts((prev) => prev.map((p) => (p.id === res.product.id ? { ...p, ...res.product } : p)));
+      setEditingProduct(null);
+      Message.success("已保存到本地素材库");
     } catch (e) {
       Message.error(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setSavingLibrary(false);
     }
   };
 
@@ -134,6 +168,24 @@ export function ProductListPage({
       setExporting(false);
     }
   };
+
+  const onExportMedia = async () => {
+    if (!selectedKeys.length) return;
+    setExportingMedia(true);
+    try {
+      const result = await exportProductMedia(selectedKeys);
+      Message.success(`已下载素材包：${result.products || selectedKeys.length} 个商品`);
+    } catch (e) {
+      Message.error(e instanceof Error ? e.message : "素材打包失败");
+    } finally {
+      setExportingMedia(false);
+    }
+  };
+
+  const compareProducts = useMemo(
+    () => products.filter((p) => selected.has(p.id)),
+    [products, selected],
+  );
 
   const onFetchMedia = async (id: string) => {
     const p = products.find((x) => x.id === id);
@@ -296,6 +348,14 @@ export function ProductListPage({
     }
   };
 
+  const resetFilters = () => {
+    setKeyword("");
+    setLocations([]);
+    setShipTime(undefined);
+    setPriceMin(undefined);
+    setPriceMax(undefined);
+  };
+
   const tagColor = (type: string) => {
     if (type === "keyword") return "arcoblue";
     if (type === "location") return "green";
@@ -304,28 +364,36 @@ export function ProductListPage({
     return "gray";
   };
 
+  const hasSelection = selected.size > 0;
+
   return (
     <main className="view view-list">
-      <section className="toolbar">
-        <div className="toolbar-left">
-          <Typography.Title heading={4} style={{ margin: 0 }}>
-            商品列表
-          </Typography.Title>
-          <Typography.Text type="secondary">
-            输入关键词与筛选条件实时搜索淘宝；也可在下方用自然语言让 AI 识别后搜索。
-          </Typography.Text>
+      <section className="search-card">
+        <div className="search-main">
+          <Input
+            size="large"
+            prefix={<IconSearch />}
+            allowClear
+            placeholder="输入商品关键词，如：夏季清凉女装"
+            value={keyword}
+            disabled={searching || parsing}
+            onChange={setKeyword}
+            onPressEnter={onSearchTaobao}
+          />
+          <Button
+            type="primary"
+            size="large"
+            className="search-submit"
+            loading={searching}
+            disabled={parsing}
+            onClick={onSearchTaobao}
+          >
+            搜索商品
+          </Button>
         </div>
-        <div className="toolbar-actions">
-          <Space wrap>
-            <Input
-              allowClear
-              style={{ width: 220 }}
-              placeholder="淘宝关键词，如：夏季清凉女装"
-              value={keyword}
-              disabled={searching || parsing}
-              onChange={setKeyword}
-              onPressEnter={onSearchTaobao}
-            />
+        <div className="search-filters">
+          <label className="filter-item">
+            <span>发货地</span>
             <Select
               allowClear
               allowCreate
@@ -333,123 +401,244 @@ export function ProductListPage({
               mode="multiple"
               maxTagCount={2}
               disabled={searching || parsing}
-              style={{ minWidth: 180, maxWidth: 280 }}
-              placeholder="发货地（可多选）"
+              style={{ width: 230 }}
+              placeholder="不限（可多选）"
               options={LOCATION_OPTIONS}
               value={locations}
               onChange={(v) => setLocations(Array.isArray(v) ? v : [])}
             />
+          </label>
+          <label className="filter-item">
+            <span>发货时效</span>
             <Select
               allowClear
               disabled={searching || parsing}
               style={{ width: 160 }}
-              placeholder="发货时间"
+              placeholder="不限"
               options={SHIP_TIME_OPTIONS}
               value={shipTime}
               onChange={(v) => setShipTime(v || undefined)}
             />
-            <InputNumber
-              hideControl
-              disabled={searching || parsing}
-              style={{ width: 100 }}
-              placeholder="最低价"
-              min={0}
-              value={priceMin}
-              onChange={(v) => setPriceMin(typeof v === "number" ? v : undefined)}
-            />
-            <Typography.Text type="secondary">—</Typography.Text>
-            <InputNumber
-              hideControl
-              disabled={searching || parsing}
-              style={{ width: 100 }}
-              placeholder="最高价"
-              min={0}
-              value={priceMax}
-              onChange={(v) => setPriceMax(typeof v === "number" ? v : undefined)}
-            />
-            <Button
-              type="primary"
-              loading={searching}
-              disabled={parsing}
-              onClick={onSearchTaobao}
-            >
-              淘宝搜索
-            </Button>
-            <Input
-              allowClear
-              style={{ width: 180 }}
-              placeholder="筛选当前列表…"
-              value={filter}
-              onChange={setFilter}
-            />
-            <Button
-              type="primary"
-              status="success"
-              loading={exporting}
-              disabled={selected.size === 0 || searching || parsing || exporting}
-              onClick={() => void onExportToTencentDocs()}
-            >
-              导出到腾讯文档（{selected.size}）
-            </Button>
-          </Space>
-        </div>
-      </section>
-
-      <section className="ai-filter-panel">
-        <div className="ai-filter-head">
-          <Typography.Text bold>AI 帮你筛选</Typography.Text>
-          <Typography.Text type="secondary">
-            用一句话描述需求，智能识别标签后自动搜索
-          </Typography.Text>
-        </div>
-        <Input.TextArea
-          value={aiText}
-          disabled={searching || parsing}
-          autoSize={{ minRows: 2, maxRows: 4 }}
-          placeholder="例如：帮我找夏季清凉碎花裙，从浙江发货，次日达，价格 80 到 200"
-          onChange={setAiText}
-        />
-        {aiTags.length > 0 ? (
-          <div className="ai-filter-tags">
-            {aiTags.map((t) => (
-              <Tag key={t.label} color={tagColor(t.type)} size="small">
-                {t.label}
-              </Tag>
-            ))}
-          </div>
-        ) : null}
-        <div className="ai-filter-actions">
-          <Button
-            type="primary"
-            status="warning"
-            loading={parsing || searching}
-            onClick={() => void onAiParseAndSearch()}
-          >
-            识别并搜索
-          </Button>
+          </label>
+          <label className="filter-item">
+            <span>价格区间</span>
+            <div className="price-range">
+              <InputNumber
+                hideControl
+                disabled={searching || parsing}
+                style={{ width: 96 }}
+                placeholder="最低价"
+                min={0}
+                value={priceMin}
+                onChange={(v) => setPriceMin(typeof v === "number" ? v : undefined)}
+              />
+              <span>—</span>
+              <InputNumber
+                hideControl
+                disabled={searching || parsing}
+                style={{ width: 96 }}
+                placeholder="最高价"
+                min={0}
+                value={priceMax}
+                onChange={(v) => setPriceMax(typeof v === "number" ? v : undefined)}
+              />
+            </div>
+          </label>
           <Button
             type="text"
-            disabled={parsing || searching || !aiText}
-            onClick={() => {
-              setAiText("");
-              setAiTags([]);
-            }}
+            className="filter-reset"
+            disabled={searching || parsing}
+            onClick={resetFilters}
           >
-            清空
+            重置
           </Button>
         </div>
       </section>
 
-      <ProductTable
-        products={filtered}
-        selectedKeys={selectedKeys}
-        libraryIds={libraryIds}
-        fetchingIds={fetchingIds}
-        onSelectionChange={(keys) => setSelected(new Set(keys))}
-        onFetchMedia={(id) => void onFetchMedia(id)}
-        onSave={(id) => void onSave(id)}
-        onView={(id) => navigate(`/detail/${id}`)}
-      />
+      <section className={`ai-panel${aiOpen ? " is-open" : ""}`}>
+        <button
+          type="button"
+          className="ai-panel-head"
+          aria-expanded={aiOpen}
+          onClick={() => setAiOpen((v) => !v)}
+        >
+          <span className="ai-panel-icon" aria-hidden>
+            <IconRobot />
+          </span>
+          <span className="ai-panel-title">智能选品助手</span>
+          <span className="ai-panel-sub">
+            用一句话描述选品需求，AI 自动识别关键词与筛选条件
+          </span>
+          {!aiOpen && aiTags.length > 0 ? (
+            <span className="ai-panel-tags">
+              {aiTags.map((t) => (
+                <Tag key={t.label} color={tagColor(t.type)} size="small">
+                  {t.label}
+                </Tag>
+              ))}
+            </span>
+          ) : null}
+          {aiOpen ? <IconUp /> : <IconDown />}
+        </button>
+        {aiOpen ? (
+          <div className="ai-panel-body">
+            <Input.TextArea
+              value={aiText}
+              disabled={searching || parsing}
+              autoSize={{ minRows: 2, maxRows: 4 }}
+              placeholder="例如：帮我找夏季清凉碎花裙，从浙江发货，次日达，价格 80 到 200"
+              onChange={setAiText}
+            />
+            {aiTags.length > 0 ? (
+              <div className="ai-panel-tags">
+                {aiTags.map((t) => (
+                  <Tag key={t.label} color={tagColor(t.type)} size="small">
+                    {t.label}
+                  </Tag>
+                ))}
+              </div>
+            ) : null}
+            <div className="ai-panel-actions">
+              <Button
+                type="primary"
+                loading={parsing || searching}
+                onClick={() => void onAiParseAndSearch()}
+              >
+                识别并搜索
+              </Button>
+              <Button
+                type="text"
+                disabled={parsing || searching || !aiText}
+                onClick={() => {
+                  setAiText("");
+                  setAiTags([]);
+                }}
+              >
+                清空
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </section>
+
+      <section className={`batch-bar${hasSelection ? " is-active" : ""}`}>
+        <span className="batch-count">
+          已选 <b>{selected.size}</b> 项
+        </span>
+        <div className="batch-actions">
+          <Button
+            disabled={selected.size < 2 || selected.size > 4}
+            onClick={() => setCompareVisible(true)}
+          >
+            商品对比
+          </Button>
+          <Button
+            loading={exportingMedia}
+            disabled={!hasSelection || exportingMedia}
+            onClick={() => void onExportMedia()}
+          >
+            打包下载素材
+          </Button>
+          <Button
+            type="primary"
+            loading={exporting}
+            disabled={!hasSelection || searching || parsing || exporting}
+            onClick={() => void onExportToTencentDocs()}
+          >
+            导出腾讯文档
+          </Button>
+        </div>
+        <span className="batch-hint">
+          {hasSelection
+            ? "商品对比支持 2–4 个商品"
+            : "勾选表格中的商品后，可进行对比、素材打包与导出"}
+        </span>
+      </section>
+
+      <section className="table-card">
+        <div className="table-card-head">
+          <div className="t-title">
+            商品结果
+            <span className="t-count">{filtered.length}</span>
+            {filter && filtered.length !== products.length ? (
+              <span className="t-sub">从 {products.length} 条中筛选</span>
+            ) : null}
+          </div>
+          <Input
+            allowClear
+            style={{ width: 220 }}
+            placeholder="筛选当前列表…"
+            value={filter}
+            onChange={setFilter}
+          />
+        </div>
+        <ProductTable
+          products={filtered}
+          selectedKeys={selectedKeys}
+          libraryIds={libraryIds}
+          fetchingIds={fetchingIds}
+          onSelectionChange={(keys) => setSelected(new Set(keys))}
+          onFetchMedia={(id) => void onFetchMedia(id)}
+          onSave={openSaveDialog}
+          onView={(id) => navigate(`/detail/${id}`)}
+        />
+      </section>
+
+      <Modal
+        visible={Boolean(editingProduct)}
+        title="归档到素材库"
+        okText="保存"
+        cancelText="取消"
+        confirmLoading={savingLibrary}
+        onCancel={() => setEditingProduct(null)}
+        onOk={() => void onSave()}
+      >
+        <div className="library-edit-form">
+          <Typography.Text type="secondary">
+            {editingProduct?.title || "商品"}
+          </Typography.Text>
+          <label>
+            项目
+            <Input value={projectDraft} placeholder="例如：2026 夏季女装" onChange={setProjectDraft} />
+          </label>
+          <label>
+            标签
+            <Input value={tagsDraft} placeholder="用逗号分隔，例如：连衣裙, 待测, 浙江" onChange={setTagsDraft} />
+          </label>
+          <label>
+            备注
+            <Input.TextArea value={noteDraft} autoSize={{ minRows: 3, maxRows: 6 }} placeholder="记录选品理由、风险或后续动作" onChange={setNoteDraft} />
+          </label>
+        </div>
+      </Modal>
+
+      <Modal
+        visible={compareVisible}
+        title="商品对比"
+        footer={null}
+        style={{ width: "min(1100px, calc(100vw - 32px))" }}
+        onCancel={() => setCompareVisible(false)}
+      >
+        <Typography.Paragraph type="secondary">
+          最多同时比较 4 个商品，可从表格勾选后打开。
+        </Typography.Paragraph>
+        <div className="compare-table-wrap">
+          <table className="compare-table">
+            <tbody>
+              <tr>
+                <th>商品</th>
+                {compareProducts.map((p) => <td key={p.id}><img src={p.cover} alt="" /><strong>{p.title || "（无标题）"}</strong></td>)}
+              </tr>
+              <tr><th>价格</th>{compareProducts.map((p) => <td key={p.id}>{p.price || "—"}</td>)}</tr>
+              <tr><th>销量</th>{compareProducts.map((p) => <td key={p.id}>{p.total_sales || "—"}</td>)}</tr>
+              <tr><th>发货地</th>{compareProducts.map((p) => <td key={p.id}>{p.location || "—"}</td>)}</tr>
+              <tr><th>发货时效</th>{compareProducts.map((p) => <td key={p.id}>{p.ship_time || "—"}</td>)}</tr>
+              <tr><th>素材</th>{compareProducts.map((p) => <td key={p.id}>主图 {p.images?.main?.length || 0} · SKU {p.images?.sku?.length || 0} · 详情 {p.images?.detail?.length || 0} · 视频 {p.images?.video?.length || 0}</td>)}</tr>
+              <tr><th>归档</th>{compareProducts.map((p) => <td key={p.id}>{p.project || "未归档"}{p.tags?.length ? ` · ${p.tags.join("、")}` : ""}{p.note ? <p>{p.note}</p> : null}</td>)}</tr>
+            </tbody>
+          </table>
+        </div>
+      </Modal>
     </main>
   );
 }

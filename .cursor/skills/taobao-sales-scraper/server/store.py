@@ -128,7 +128,15 @@ def normalize_product(raw: dict) -> dict | None:
 
     cover = images["main"][0]["src"] if images["main"] else image
 
-    return {
+    tags = raw.get("tags") or []
+    if isinstance(tags, str):
+        tags = [x.strip() for x in re.split(r"[,，、]", tags) if x.strip()]
+    elif isinstance(tags, (list, tuple, set)):
+        tags = [str(x).strip() for x in tags if str(x).strip()]
+    else:
+        tags = []
+
+    product = {
         "id": iid or title[:16],
         "title": title,
         "url": url,
@@ -139,6 +147,14 @@ def normalize_product(raw: dict) -> dict | None:
         "total_sales": raw.get("total_sales") or 0,
         "images": images,
     }
+    # 素材库的业务字段：搜索、详情拉取时也要保留，避免覆盖用户的归档信息。
+    for key in ("project", "note", "savedAt"):
+        value = raw.get(key)
+        if value:
+            product[key] = str(value).strip()
+    if tags:
+        product["tags"] = list(dict.fromkeys(tags))
+    return product
 
 
 def parse_price_num(price: object) -> float | None:
@@ -297,7 +313,26 @@ def _write_json(path: Path, data) -> None:
 
 def load_products() -> list[dict]:
     with _lock:
-        return list(_session_products)
+        saved = _read_json(LIBRARY_PATH, [])
+        metadata = {
+            str(item.get("id")): item
+            for item in saved
+            if isinstance(item, dict) and item.get("id")
+        }
+        items = []
+        for product in _session_products:
+            library_item = metadata.get(str(product.get("id")), {})
+            items.append(
+                {
+                    **product,
+                    **{
+                        key: library_item[key]
+                        for key in ("project", "tags", "note", "savedAt")
+                        if library_item.get(key)
+                    },
+                }
+            )
+        return items
 
 
 def save_raw_and_products(
@@ -330,12 +365,34 @@ def save_to_library(product: dict) -> list[dict]:
         lib = _read_json(LIBRARY_PATH, [])
         if not isinstance(lib, list):
             lib = []
-        pid = product.get("id")
-        if pid and not any(x.get("id") == pid for x in lib):
-            from datetime import datetime
+        normalized = normalize_product(product) or product
+        pid = normalized.get("id")
+        if not pid:
+            return lib
+        from datetime import datetime
 
-            lib.append({**product, "savedAt": datetime.now().isoformat(timespec="seconds")})
-            _write_json(LIBRARY_PATH, lib)
+        index = next((i for i, item in enumerate(lib) if item.get("id") == pid), None)
+        if index is None:
+            lib.append({**normalized, "savedAt": datetime.now().isoformat(timespec="seconds")})
+        else:
+            # 入库可反复编辑标签、项目和备注，同时保留首次归档时间。
+            updated = {
+                **lib[index],
+                **normalized,
+                "savedAt": lib[index].get("savedAt")
+                or datetime.now().isoformat(timespec="seconds"),
+            }
+            # 前端明确传空值时，视为清空该归档字段，而非沿用旧值。
+            for key in ("project", "tags", "note"):
+                if key not in product:
+                    continue
+                value = product.get(key)
+                if value is None or value == "" or value == []:
+                    updated.pop(key, None)
+                else:
+                    updated[key] = value
+            lib[index] = updated
+        _write_json(LIBRARY_PATH, lib)
         return lib
 
 

@@ -10,7 +10,9 @@
 - 价格、发货地、发货时效筛选
 - 自然语言选品需求解析（配置 DeepSeek 后可用；未配置时使用本地规则）
 - 拉取并按商品归档主图、SKU 图、详情图和视频
-- 本地 JSON 素材库，无需额外数据库
+- 本地 JSON 素材库：支持项目、标签与备注，无需额外数据库
+- 勾选 2–4 个商品横向对比价格、销量、发货、素材和归档信息
+- 将已拉取素材按商品批量打包为 ZIP 下载
 - 导出选中商品至腾讯文档在线表格
 - 打包为 Windows 双击即用的绿色文件夹
 
@@ -120,6 +122,7 @@ cd .cursor/skills/taobao-sales-scraper/desktop
 | `POST /api/search` | 搜索淘宝或 1688 商品 |
 | `POST /api/parse-intent` | 解析自然语言搜索条件 |
 | `POST /api/products/fetch-detail` | 拉取并保存商品素材 |
+| `POST /api/products/export-media` | 将选中商品的本地素材打包为 ZIP |
 | `GET` / `POST /api/library` | 查询或保存本地素材库 |
 | `POST /api/tencent-docs/export` | 导出商品至腾讯文档 |
 

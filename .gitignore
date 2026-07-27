@@ -11,6 +11,7 @@
 *.log
 
 # Legacy / local
+config.toml
 .chrome-profile/
 __pycache__/
 *.pyc

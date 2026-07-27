@@ -15,6 +15,11 @@ export type Product = {
   cover: string;
   /** taobao | 1688 */
   platform?: "taobao" | "1688" | string;
+  /** 本地素材库归档字段 */
+  project?: string;
+  tags?: string[];
+  note?: string;
+  savedAt?: string;
   images: {
     main: ProductImage[];
     sku: ProductImage[];
@@ -32,6 +37,9 @@ export type LibraryItem = {
   ship_time?: string;
   cover: string;
   savedAt: string;
+  project?: string;
+  tags?: string[];
+  note?: string;
 };
 
 /** 是否已拉取过详情素材（本地 product_media，而非搜索封面） */

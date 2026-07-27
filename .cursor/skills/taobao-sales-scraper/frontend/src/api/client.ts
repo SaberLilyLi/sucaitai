@@ -99,13 +99,47 @@ export function searchTaobao(
 }
 
 export function saveToLibrary(product: Product) {
-  return request<{ count: number; items: Product[]; libraryIds: string[] }>(
+  return request<{ count: number; items: Product[]; product: Product; libraryIds: string[] }>(
     "/api/library",
     {
       method: "POST",
       body: JSON.stringify({ product }),
     },
   );
+}
+
+export async function exportProductMedia(ids: string[]) {
+  const res = await fetch("/api/products/export-media", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      detail = body.detail || body.message || detail;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get("content-disposition") || "";
+  const filename = decodeURIComponent(
+    disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1] ||
+      disposition.match(/filename=\"?([^\";]+)\"?/i)?.[1] ||
+      "素材台-批量素材.zip",
+  );
+  const href = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = href;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(href);
+  return { filename, products: Number(res.headers.get("X-Exported-Products") || 0) };
 }
 
 export function fetchLibrary() {
